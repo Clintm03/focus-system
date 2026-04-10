@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 
 const FOCUS_SEC = 15 * 60
-const BREAK_SEC = 5 * 60
 
 function formatTime(sec) {
   const m = Math.floor(sec / 60)
@@ -13,48 +12,31 @@ function formatTime(sec) {
 export default function Timer({ startFocusSignal = 0 }) {
   const [mode, setMode] = useState('focus')
   const [remaining, setRemaining] = useState(FOCUS_SEC)
+  /** Count-up seconds while on break (until you press Start Focus). */
+  const [breakElapsed, setBreakElapsed] = useState(0)
   const [running, setRunning] = useState(false)
-  /** During break only: 'countdown' until 0, then 'over' = past break (your time). */
-  const [breakPhase, setBreakPhase] = useState('countdown')
-  const [breakOverSec, setBreakOverSec] = useState(0)
   const lastSignalRef = useRef(0)
 
-  // Count down only when not in "over break" stretch
   useEffect(() => {
     if (!running) return
-    if (mode === 'break' && breakPhase === 'over') return
     const id = setInterval(() => {
-      setRemaining((r) => (r <= 1 ? 0 : r - 1))
-    }, 1000)
-    return () => clearInterval(id)
-  }, [running, mode, breakPhase])
-
-  // Count up during over-break (for your own awareness)
-  useEffect(() => {
-    if (!running || mode !== 'break' || breakPhase !== 'over') return
-    const id = setInterval(() => {
-      setBreakOverSec((s) => s + 1)
-    }, 1000)
-    return () => clearInterval(id)
-  }, [running, mode, breakPhase])
-
-  useEffect(() => {
-    if (!running || remaining > 0) return
-    const id = setTimeout(() => {
       if (mode === 'focus') {
-        setMode('break')
-        setRemaining(BREAK_SEC)
-        setBreakPhase('countdown')
-        setBreakOverSec(0)
-        return
+        setRemaining((r) => (r <= 1 ? 0 : r - 1))
+      } else {
+        setBreakElapsed((e) => e + 1)
       }
-      if (mode === 'break' && breakPhase === 'countdown') {
-        setBreakPhase('over')
-        setBreakOverSec(0)
-      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [running, mode])
+
+  useEffect(() => {
+    if (!running || remaining > 0 || mode !== 'focus') return
+    const id = setTimeout(() => {
+      setMode('break')
+      setBreakElapsed(0)
     }, 0)
     return () => clearTimeout(id)
-  }, [running, remaining, mode, breakPhase])
+  }, [running, remaining, mode])
 
   useEffect(() => {
     if (startFocusSignal === 0 || startFocusSignal === lastSignalRef.current)
@@ -62,16 +44,14 @@ export default function Timer({ startFocusSignal = 0 }) {
     lastSignalRef.current = startFocusSignal
     setMode('focus')
     setRemaining(FOCUS_SEC)
-    setBreakPhase('countdown')
-    setBreakOverSec(0)
+    setBreakElapsed(0)
     setRunning(true)
   }, [startFocusSignal])
 
   const startFocus = () => {
     setMode('focus')
     setRemaining(FOCUS_SEC)
-    setBreakPhase('countdown')
-    setBreakOverSec(0)
+    setBreakElapsed(0)
     setRunning(true)
   }
 
@@ -83,22 +63,16 @@ export default function Timer({ startFocusSignal = 0 }) {
     setRunning(false)
     setMode('focus')
     setRemaining(FOCUS_SEC)
-    setBreakPhase('countdown')
-    setBreakOverSec(0)
+    setBreakElapsed(0)
   }
 
-  const modeLabel =
-    mode === 'break' && breakPhase === 'over' ? 'Break · over' : mode === 'focus'
-      ? 'Focus'
-      : 'Break'
+  const modeLabel = mode === 'focus' ? 'Focus' : 'On break'
   const modeColor =
     mode === 'focus'
       ? 'text-teal-400 bg-teal-950/40 border-teal-800/60'
-      : breakPhase === 'over'
-        ? 'text-amber-300 bg-amber-950/50 border-amber-800/60'
-        : 'text-amber-200 bg-amber-950/30 border-amber-900/50'
+      : 'text-amber-200 bg-amber-950/30 border-amber-900/50'
 
-  const inBreakOver = mode === 'break' && breakPhase === 'over'
+  const onBreak = mode === 'break'
 
   return (
     <motion.section
@@ -118,16 +92,21 @@ export default function Timer({ startFocusSignal = 0 }) {
         </span>
       </div>
 
-      {inBreakOver ? (
+      {onBreak ? (
         <>
           <p className="mb-1 text-center text-sm text-amber-400/90">
-            5 minutes are up — stay on break as long as you need.
+            Break time — counting up
           </p>
-          <p className="mb-1 text-center text-3xl font-light tabular-nums tracking-tight text-amber-200">
-            +{formatTime(breakOverSec)}
+          <p className="mb-1 text-center text-4xl font-light tabular-nums tracking-tight text-amber-100">
+            {formatTime(breakElapsed)}
+          </p>
+          <p className="mb-1 text-center text-sm tabular-nums text-zinc-500">
+            {breakElapsed} second{breakElapsed === 1 ? '' : 's'} on break
           </p>
           <p className="mb-2 text-center text-xs text-zinc-500">
-            Time past break (just for you — no score, no guilt).
+            Counts 1, 2, 3… until you press{' '}
+            <span className="text-zinc-400">I&apos;m back · Start focus</span> (or
+            start Gentle start again from the left).
           </p>
         </>
       ) : (
@@ -137,8 +116,8 @@ export default function Timer({ startFocusSignal = 0 }) {
       )}
 
       <p className="mb-6 text-center text-sm text-zinc-500">
-        15 min focus · 5 min break · after break ends, timer shows extra break time;
-        press Start Focus when you&apos;re ready (no auto-start).
+        15 min focus · break has no countdown — it runs until you say you&apos;re
+        back.
       </p>
 
       <div className="flex flex-wrap justify-center gap-3">
@@ -147,7 +126,7 @@ export default function Timer({ startFocusSignal = 0 }) {
           onClick={startFocus}
           className="min-w-[140px] rounded-xl bg-zinc-100 px-5 py-3.5 text-base font-semibold text-zinc-900 transition hover:bg-white"
         >
-          Start Focus
+          {onBreak ? "I'm back · Start focus" : 'Start Focus'}
         </button>
         <button
           type="button"

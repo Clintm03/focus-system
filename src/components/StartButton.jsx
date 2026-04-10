@@ -3,13 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   createAudioContext,
   noiseGainFromPercent,
-  playBreakEndPing,
   playFocusEndChime,
   startBrownNoise,
 } from '../lib/audioSession'
 
 const FOCUS_SEC = 5 * 60
-const BREAK_SEC = 2 * 60
 const VOLUME_LS_KEY = 'focus-system-brown-noise-volume'
 
 function readSavedVolumePercent() {
@@ -33,11 +31,11 @@ function formatTime(sec) {
 export default function StartButton({ onContinueToFocus }) {
   const [phase, setPhase] = useState('idle')
   const [remaining, setRemaining] = useState(FOCUS_SEC)
+  const [breakElapsed, setBreakElapsed] = useState(0)
   const [noisePercent, setNoisePercent] = useState(readSavedVolumePercent)
   const ctxRef = useRef(null)
   const noiseCtrlRef = useRef(null)
   const focusZeroHandledRef = useRef(false)
-  const breakZeroHandledRef = useRef(false)
 
   const getCtx = () => {
     if (!ctxRef.current) {
@@ -77,7 +75,11 @@ export default function StartButton({ onContinueToFocus }) {
   useEffect(() => {
     if (phase !== 'focus' && phase !== 'break') return
     const id = setInterval(() => {
-      setRemaining((r) => (r <= 1 ? 0 : r - 1))
+      if (phase === 'focus') {
+        setRemaining((r) => (r <= 1 ? 0 : r - 1))
+      } else {
+        setBreakElapsed((e) => e + 1)
+      }
     }, 1000)
     return () => clearInterval(id)
   }, [phase])
@@ -85,39 +87,30 @@ export default function StartButton({ onContinueToFocus }) {
   useEffect(() => {
     if (remaining !== 0) {
       focusZeroHandledRef.current = false
-      breakZeroHandledRef.current = false
       return
     }
-    if (phase === 'focus' && !focusZeroHandledRef.current) {
-      focusZeroHandledRef.current = true
-      const ctx = ctxRef.current
-      if (ctx) playFocusEndChime(ctx)
-      stopNoise()
-      setPhase('break')
-      setRemaining(BREAK_SEC)
-      return
-    }
-    if (phase === 'break' && !breakZeroHandledRef.current) {
-      breakZeroHandledRef.current = true
-      const ctx = ctxRef.current
-      if (ctx) playBreakEndPing(ctx)
-      setPhase('cycleDone')
-    }
+    if (phase !== 'focus' || focusZeroHandledRef.current) return
+    focusZeroHandledRef.current = true
+    const ctx = ctxRef.current
+    if (ctx) playFocusEndChime(ctx)
+    stopNoise()
+    setPhase('break')
+    setBreakElapsed(0)
   }, [remaining, phase])
 
   const resetToIdle = () => {
     stopNoise()
     setPhase('idle')
     setRemaining(FOCUS_SEC)
+    setBreakElapsed(0)
     focusZeroHandledRef.current = false
-    breakZeroHandledRef.current = false
   }
 
-  const startFocus = () => {
+  const startFiveMin = () => {
     getCtx()
     focusZeroHandledRef.current = false
-    breakZeroHandledRef.current = false
     setRemaining(FOCUS_SEC)
+    setBreakElapsed(0)
     setPhase('focus')
   }
 
@@ -125,8 +118,13 @@ export default function StartButton({ onContinueToFocus }) {
     stopNoise()
     setPhase('idle')
     setRemaining(FOCUS_SEC)
+    setBreakElapsed(0)
     focusZeroHandledRef.current = false
-    breakZeroHandledRef.current = false
+  }
+
+  const continueToPomodoro = () => {
+    onContinueToFocus()
+    resetToIdle()
   }
 
   return (
@@ -178,13 +176,14 @@ export default function StartButton({ onContinueToFocus }) {
           >
             <button
               type="button"
-              onClick={startFocus}
+              onClick={startFiveMin}
               className="w-full rounded-2xl bg-teal-600 px-6 py-5 text-lg font-semibold text-white shadow-lg shadow-teal-900/30 transition hover:bg-teal-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
             >
               Start (5 Minutes)
             </button>
             <p className="text-center text-sm text-zinc-500">
-              Brown noise during focus, then a chime. After that, a 2-minute break.
+              Brown noise during focus, then a chime. Break time counts up (1s, 2s,
+              3s…) until you&apos;re back and choose what&apos;s next.
             </p>
           </motion.div>
         )}
@@ -225,50 +224,29 @@ export default function StartButton({ onContinueToFocus }) {
             className="flex flex-col items-center gap-4"
           >
             <p className="text-center text-xs font-medium uppercase tracking-wider text-amber-400/90">
-              Break
+              On break · counting up
             </p>
-            <p className="text-center text-xl font-medium tabular-nums text-zinc-100">
-              {formatTime(remaining)}
+            <p className="text-center text-3xl font-light tabular-nums text-amber-100">
+              {formatTime(breakElapsed)}
             </p>
-            <p className="text-center text-base leading-relaxed text-zinc-400">
-              Step away, breathe, or stretch. Noise is off.
+            <p className="text-center text-sm tabular-nums text-zinc-500">
+              {breakElapsed} second{breakElapsed === 1 ? '' : 's'} away
             </p>
-            <button
-              type="button"
-              onClick={cancelSession}
-              className="rounded-xl border border-zinc-700 px-5 py-2.5 text-sm text-zinc-300 transition hover:bg-zinc-800"
-            >
-              End break early
-            </button>
-          </motion.div>
-        )}
-
-        {phase === 'cycleDone' && (
-          <motion.div
-            key="done"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center gap-4"
-          >
-            <p className="text-center text-zinc-300">
-              Nice. You showed up — break is done when you&apos;re ready for another
-              round.
+            <p className="text-center text-sm leading-relaxed text-zinc-400">
+              Step away as long as you need. When you&apos;re back, pick your next
+              step — another gentle 5 min, 15 min Pomodoro focus, or stop.
             </p>
             <div className="flex w-full flex-col gap-3 sm:flex-row">
               <button
                 type="button"
-                onClick={startFocus}
+                onClick={startFiveMin}
                 className="flex-1 rounded-xl bg-teal-600 py-4 text-base font-semibold text-white transition hover:bg-teal-500"
               >
                 Start again (5 min)
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onContinueToFocus()
-                  resetToIdle()
-                }}
+                onClick={continueToPomodoro}
                 className="flex-1 rounded-xl border border-zinc-600 py-4 text-base font-semibold text-zinc-100 transition hover:bg-zinc-800"
               >
                 Continue (15 min focus)
