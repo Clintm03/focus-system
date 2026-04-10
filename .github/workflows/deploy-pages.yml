@@ -1,6 +1,5 @@
-# Builds dist/ and deploys to GitHub Pages for this repo.
-# Live URL: https://clintm03.github.io/focus-system/
-# Enable once: Repo Settings → Pages → Build: GitHub Actions
+# Builds dist/ and deploys to GitHub Pages (user site repo → https://clintm03.github.io/).
+# Enable once: Settings → Pages → Build: GitHub Actions
 name: Deploy GitHub Pages
 
 on:
@@ -28,8 +27,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-        env:
-          VITE_BASE_PATH: /focus-system/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
