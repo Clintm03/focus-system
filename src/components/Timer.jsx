@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import { createAudioContext, playFocusEndChime } from '../lib/audioSession'
 
 const FOCUS_SEC = 15 * 60
 
@@ -9,13 +10,25 @@ function formatTime(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function Timer({ startFocusSignal = 0 }) {
+export default function Timer({ startFocusSignal = 0, noisePercent = 50 }) {
   const [mode, setMode] = useState('focus')
   const [remaining, setRemaining] = useState(FOCUS_SEC)
   /** Count-up seconds while on break (until you press Start Focus). */
   const [breakElapsed, setBreakElapsed] = useState(0)
   const [running, setRunning] = useState(false)
   const lastSignalRef = useRef(0)
+  const ctxRef = useRef(null)
+  const focusZeroSoundRef = useRef(false)
+
+  const getCtx = () => {
+    if (!ctxRef.current) {
+      ctxRef.current = createAudioContext()
+    }
+    if (ctxRef.current.state === 'suspended') {
+      void ctxRef.current.resume()
+    }
+    return ctxRef.current
+  }
 
   useEffect(() => {
     if (!running) return
@@ -39,9 +52,21 @@ export default function Timer({ startFocusSignal = 0 }) {
   }, [running, remaining, mode])
 
   useEffect(() => {
+    if (remaining !== 0) {
+      focusZeroSoundRef.current = false
+      return
+    }
+    if (!running || mode !== 'focus' || focusZeroSoundRef.current) return
+    focusZeroSoundRef.current = true
+    const ctx = ctxRef.current
+    if (ctx) playFocusEndChime(ctx, noisePercent)
+  }, [remaining, running, mode, noisePercent])
+
+  useEffect(() => {
     if (startFocusSignal === 0 || startFocusSignal === lastSignalRef.current)
       return
     lastSignalRef.current = startFocusSignal
+    getCtx()
     setMode('focus')
     setRemaining(FOCUS_SEC)
     setBreakElapsed(0)
@@ -49,6 +74,7 @@ export default function Timer({ startFocusSignal = 0 }) {
   }, [startFocusSignal])
 
   const startFocus = () => {
+    getCtx()
     setMode('focus')
     setRemaining(FOCUS_SEC)
     setBreakElapsed(0)

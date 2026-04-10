@@ -73,17 +73,20 @@ export function startBrownNoise(audioContext, volume = 0.12) {
   return { stop, setVolume }
 }
 
-/** Pleasant two-tone chime when the focus block ends. */
-export function playFocusEndChime(audioContext) {
+/** Pleasant two-tone chime when the focus block ends. `volumePercent` 0–100 matches the brown-noise slider. */
+export function playFocusEndChime(audioContext, volumePercent = 100) {
   if (!audioContext) return
+  const p = Math.max(0, Math.min(100, Number(volumePercent) || 0))
+  if (p <= 0) return
   if (audioContext.state === 'suspended') {
     void audioContext.resume()
   }
   const t = audioContext.currentTime
+  const peak = 0.12 * (p / 100)
   const g = audioContext.createGain()
   g.connect(audioContext.destination)
   g.gain.setValueAtTime(0, t)
-  g.gain.linearRampToValueAtTime(0.12, t + 0.03)
+  g.gain.linearRampToValueAtTime(peak, t + 0.03)
   g.gain.exponentialRampToValueAtTime(0.0008, t + 0.75)
 
   const freqs = [523.25, 659.25]

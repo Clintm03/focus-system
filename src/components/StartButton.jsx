@@ -8,19 +8,6 @@ import {
 } from '../lib/audioSession'
 
 const FOCUS_SEC = 5 * 60
-const VOLUME_LS_KEY = 'focus-system-brown-noise-volume'
-
-function readSavedVolumePercent() {
-  try {
-    const raw = localStorage.getItem(VOLUME_LS_KEY)
-    if (raw == null) return 50
-    const n = Number.parseInt(raw, 10)
-    if (Number.isFinite(n)) return Math.max(0, Math.min(100, n))
-  } catch {
-    /* ignore */
-  }
-  return 50
-}
 
 function formatTime(sec) {
   const m = Math.floor(sec / 60)
@@ -28,11 +15,14 @@ function formatTime(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function StartButton({ onContinueToFocus }) {
+export default function StartButton({
+  onContinueToFocus,
+  noisePercent,
+  onNoisePercentChange,
+}) {
   const [phase, setPhase] = useState('idle')
   const [remaining, setRemaining] = useState(FOCUS_SEC)
   const [breakElapsed, setBreakElapsed] = useState(0)
-  const [noisePercent, setNoisePercent] = useState(readSavedVolumePercent)
   const ctxRef = useRef(null)
   const noiseCtrlRef = useRef(null)
   const focusZeroHandledRef = useRef(false)
@@ -92,11 +82,11 @@ export default function StartButton({ onContinueToFocus }) {
     if (phase !== 'focus' || focusZeroHandledRef.current) return
     focusZeroHandledRef.current = true
     const ctx = ctxRef.current
-    if (ctx) playFocusEndChime(ctx)
+    if (ctx) playFocusEndChime(ctx, noisePercent)
     stopNoise()
     setPhase('break')
     setBreakElapsed(0)
-  }, [remaining, phase])
+  }, [remaining, phase, noisePercent])
 
   const resetToIdle = () => {
     stopNoise()
@@ -149,15 +139,9 @@ export default function StartButton({ onContinueToFocus }) {
           min={0}
           max={100}
           value={noisePercent}
-          onChange={(e) => {
-            const v = Number(e.target.value)
-            setNoisePercent(v)
-            try {
-              localStorage.setItem(VOLUME_LS_KEY, String(v))
-            } catch {
-              /* quota */
-            }
-          }}
+          onChange={(e) =>
+            onNoisePercentChange(Number(e.target.value))
+          }
           className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-zinc-800 accent-teal-500 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-teal-500 [&::-webkit-slider-thumb]:shadow [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-teal-500"
         />
         <span className="w-9 shrink-0 text-right text-xs tabular-nums text-zinc-500">

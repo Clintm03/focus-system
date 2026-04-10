@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import TaskList from './components/TaskList'
 import StartButton from './components/StartButton'
 import Timer from './components/Timer'
-import TaskDetail from './components/TaskDetail'
 import MindSupport from './components/MindSupport'
 import {
   defaultState,
+  emptyTask,
   loadPersistedState,
+  newExtraTaskId,
   savePersistedState,
   todayKey,
 } from './lib/storage'
 import { clearLegacyInboxPath } from './lib/mindStorage'
+import {
+  persistVolumePercent,
+  readSavedVolumePercent,
+} from './lib/volumePrefs'
 
 export default function App() {
   const [persisted, setPersisted] = useState(() => loadPersistedState())
-  const { tasks } = persisted
-  const [selectedId, setSelectedId] = useState(null)
+  const [noisePercent, setNoisePercent] = useState(readSavedVolumePercent)
+  const { tasks, extraTaskIds = [] } = persisted
   const [focusKick, setFocusKick] = useState(0)
 
   useEffect(() => {
@@ -32,7 +37,6 @@ export default function App() {
     const id = setInterval(() => {
       if (todayKey() !== day) {
         setPersisted(defaultState())
-        setSelectedId(null)
       }
     }, 60_000)
     return () => clearInterval(id)
@@ -56,6 +60,31 @@ export default function App() {
         [id]: { ...p.tasks[id], subtasks },
       },
     }))
+  }
+
+  const addExtraTask = () => {
+    const id = newExtraTaskId()
+    setPersisted((p) => ({
+      ...p,
+      extraTaskIds: [...(p.extraTaskIds ?? []), id],
+      tasks: { ...p.tasks, [id]: emptyTask() },
+    }))
+  }
+
+  const removeExtraTask = (id) => {
+    if (typeof id !== 'string' || !id.startsWith('extra-')) return
+    setPersisted((p) => ({
+      ...p,
+      extraTaskIds: (p.extraTaskIds ?? []).filter((x) => x !== id),
+      tasks: Object.fromEntries(
+        Object.entries(p.tasks).filter(([k]) => k !== id),
+      ),
+    }))
+  }
+
+  const setNoisePercentPersisted = (v) => {
+    setNoisePercent(v)
+    persistVolumePercent(v)
   }
 
   return (
@@ -82,17 +111,32 @@ export default function App() {
         <div className="flex w-full flex-col items-center gap-10">
           <TaskList
             tasks={tasks}
+            extraTaskIds={extraTaskIds}
             onUpdateTask={updateTask}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
+            onUpdateSubtasks={updateSubtasks}
+            onAddExtraTask={addExtraTask}
+            onRemoveExtraTask={removeExtraTask}
           />
-          <MindSupport tasks={tasks} onSelectTask={setSelectedId} />
+          <MindSupport
+            tasks={tasks}
+            extraTaskIds={extraTaskIds}
+            onSelectTask={(id) => {
+              document
+                .getElementById(`task-slot-${id}`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+            }}
+          />
         </div>
         <div className="flex w-full flex-col items-center gap-10 lg:sticky lg:top-8">
           <StartButton
             onContinueToFocus={() => setFocusKick((k) => k + 1)}
+            noisePercent={noisePercent}
+            onNoisePercentChange={setNoisePercentPersisted}
           />
-          <Timer startFocusSignal={focusKick} />
+          <Timer
+            startFocusSignal={focusKick}
+            noisePercent={noisePercent}
+          />
         </div>
       </main>
 
@@ -100,17 +144,6 @@ export default function App() {
         Stored on this device only · {persisted.dayKey}
       </footer>
 
-      <AnimatePresence>
-        {selectedId && tasks[selectedId] && (
-          <TaskDetail
-            key={selectedId}
-            taskId={selectedId}
-            task={tasks[selectedId]}
-            onClose={() => setSelectedId(null)}
-            onUpdateSubtasks={updateSubtasks}
-          />
-        )}
-      </AnimatePresence>
     </div>
   )
 }

@@ -13,6 +13,13 @@ export function emptyTask() {
   }
 }
 
+export function newExtraTaskId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `extra-${crypto.randomUUID()}`
+  }
+  return `extra-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
 export function defaultState() {
   return {
     dayKey: todayKey(),
@@ -21,6 +28,7 @@ export function defaultState() {
       small: emptyTask(),
       admin: emptyTask(),
     },
+    extraTaskIds: [],
   }
 }
 
@@ -34,6 +42,11 @@ function mergeTask(base, saved) {
   }
 }
 
+function normalizeExtraTaskIds(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((id) => typeof id === 'string' && id.startsWith('extra-'))
+}
+
 export function loadPersistedState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -41,13 +54,19 @@ export function loadPersistedState() {
     const data = JSON.parse(raw)
     if (data.dayKey !== todayKey()) return defaultState()
     const base = defaultState()
+    const tasks = {
+      main: mergeTask(base.tasks.main, data.tasks?.main),
+      small: mergeTask(base.tasks.small, data.tasks?.small),
+      admin: mergeTask(base.tasks.admin, data.tasks?.admin),
+    }
+    const extraTaskIds = normalizeExtraTaskIds(data.extraTaskIds)
+    for (const id of extraTaskIds) {
+      tasks[id] = mergeTask(emptyTask(), data.tasks?.[id])
+    }
     return {
       dayKey: data.dayKey,
-      tasks: {
-        main: mergeTask(base.tasks.main, data.tasks?.main),
-        small: mergeTask(base.tasks.small, data.tasks?.small),
-        admin: mergeTask(base.tasks.admin, data.tasks?.admin),
-      },
+      tasks,
+      extraTaskIds,
     }
   } catch {
     return defaultState()

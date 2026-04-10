@@ -96,8 +96,8 @@ const BOX_PHASES = [
   { label: 'Hold (empty)', cue: 'Lungs empty — brief pause' },
 ]
 
-function pickSlot(tasks) {
-  const ids = ['main', 'small', 'admin']
+function pickSlot(tasks, extraTaskIds = []) {
+  const ids = ['main', 'small', 'admin', ...extraTaskIds]
   const notDone = ids.filter((id) => !tasks[id]?.done)
   const pool = notDone.length ? notDone : ids
   const titled = pool.filter((id) => tasks[id]?.title?.trim())
@@ -139,16 +139,11 @@ function BoxBreathing() {
         Box breathing (4-4-4-4)
       </p>
       <p className="mt-1 text-sm text-zinc-500">
-        True box breath:{' '}
         <span className="text-zinc-400">
-          inhale 4s → hold full 4s → exhale 4s → hold empty 4s
+        Inhale ↑ 4s → hold full → 4s → exhale ↓ 4s → hold empty ← 4s
         </span>
-        . That’s four sides of the square—then it stops. Start again anytime;
-        use Stop early if you need out.
       </p>
-      <p className="mt-2 font-mono text-[11px] leading-relaxed text-zinc-600">
-        Inhale ↑ · hold full → · exhale ↓ · hold empty ←
-      </p>
+
       <AnimatePresence mode="wait">
         {running ? (
           <motion.div
@@ -199,22 +194,39 @@ function BoxBreathing() {
   )
 }
 
-function newParkingId() {
+function newMindItemId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
   }
-  return `p-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  return `m-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-export default function MindSupport({ tasks, onSelectTask }) {
+export default function MindSupport({ tasks, extraTaskIds = [], onSelectTask }) {
   const [mind, setMind] = useState(loadMindState)
   const [parkingDraft, setParkingDraft] = useState('')
+  const [winDraft, setWinDraft] = useState('')
 
   useEffect(() => {
     saveMindState(mind)
   }, [mind])
 
   const t = todayKey()
+
+  useEffect(() => {
+    const rollWinsIfNewDay = () => {
+      const day = todayKey()
+      setMind((m) => {
+        if (!m.winsDay || m.winsDay === day) return m
+        return { ...m, winItems: [], winsDay: '' }
+      })
+    }
+    const t0 = setTimeout(rollWinsIfNewDay, 0)
+    const id = setInterval(rollWinsIfNewDay, 60_000)
+    return () => {
+      clearTimeout(t0)
+      clearInterval(id)
+    }
+  }, [])
   const verse =
     SCRIPTURE_TIPS[mind.tipIndex % SCRIPTURE_TIPS.length]
 
@@ -227,7 +239,7 @@ export default function MindSupport({ tasks, onSelectTask }) {
   }
 
   const pickForMe = () => {
-    const id = pickSlot(tasks)
+    const id = pickSlot(tasks, extraTaskIds)
     onSelectTask(id)
   }
 
@@ -238,7 +250,7 @@ export default function MindSupport({ tasks, onSelectTask }) {
     if (!text) return
     setMind((m) => ({
       ...m,
-      parkingItems: [...(m.parkingItems ?? []), { id: newParkingId(), text }],
+      parkingItems: [...(m.parkingItems ?? []), { id: newMindItemId(), text }],
     }))
     setParkingDraft('')
   }
@@ -254,6 +266,35 @@ export default function MindSupport({ tasks, onSelectTask }) {
     setMind((m) => ({ ...m, parkingItems: [] }))
   }
 
+  const winItems =
+    mind.winsDay === t ? (mind.winItems ?? []) : []
+
+  const addWin = () => {
+    const text = winDraft.trim()
+    if (!text) return
+    setMind((m) => {
+      const day = todayKey()
+      const baseItems = m.winsDay === day ? (m.winItems ?? []) : []
+      return {
+        ...m,
+        winsDay: day,
+        winItems: [...baseItems, { id: newMindItemId(), text }],
+      }
+    })
+    setWinDraft('')
+  }
+
+  const removeWin = (id) => {
+    setMind((m) => ({
+      ...m,
+      winItems: (m.winItems ?? []).filter((x) => x.id !== id),
+    }))
+  }
+
+  const clearWinsToday = () => {
+    setMind((m) => ({ ...m, winItems: [], winsDay: '' }))
+  }
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 12 }}
@@ -265,9 +306,7 @@ export default function MindSupport({ tasks, onSelectTask }) {
         Mind &amp; focus tools
       </h2>
       <p className="text-center text-xs text-zinc-600">
-        Practical supports (parking lot, breathing, picks), a daily Bible study
-        passage, and Scripture in Today&apos;s tip — externalize time and anchor
-        your day.
+        Practical supports, a daily Bible study passage, and Scripture in Today&apos;s tip — externalize time and anchor your day.
       </p>
 
       <div className="min-w-0 space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/30 p-5">
@@ -276,8 +315,7 @@ export default function MindSupport({ tasks, onSelectTask }) {
             Brain parking lot
           </p>
           <p className="mt-1 text-sm text-zinc-500">
-            Add a thought or reminder; it saves here. Remove items when you&apos;re
-            done or they no longer need a slot in your head.
+            Add a thought or reminder. Remove items when you&apos;re done or they no longer need a slot in your head.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
             <textarea
@@ -387,7 +425,7 @@ export default function MindSupport({ tasks, onSelectTask }) {
             Pick a task for me
           </button>
           <p className="mt-2 text-center text-xs text-zinc-600">
-            Opens a random incomplete slot (prefers one with a title).
+            Scrolls to a random incomplete task (prefers one with a title).
           </p>
         </div>
 
@@ -424,25 +462,76 @@ export default function MindSupport({ tasks, onSelectTask }) {
 
         <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-            Today&apos;s win (one line)
+            Today&apos;s wins
           </p>
           <p className="mt-1 text-sm text-zinc-500">
-            No streaks—just what you want to remember about showing up.
+            Add one line per win — they stay for today only (no streaks), then
+            start fresh tomorrow.
           </p>
-          <input
-            type="text"
-            value={mind.winLine}
-            onChange={(e) => {
-              const v = e.target.value
-              setMind((m) => ({
-                ...m,
-                winLine: v,
-                winDay: v.trim() ? t : '',
-              }))
-            }}
-            placeholder="e.g. Started the scary email / sat for 5 minutes"
-            className="mt-3 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600"
-          />
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              type="text"
+              value={winDraft}
+              onChange={(e) => setWinDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addWin()
+                }
+              }}
+              placeholder="e.g. Started the scary email / sat for 5 minutes"
+              className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600"
+            />
+            <button
+              type="button"
+              onClick={addWin}
+              className="shrink-0 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-500"
+            >
+              Add win
+            </button>
+          </div>
+          <div className="mt-4 min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-600">
+                Today ({winItems.length})
+              </p>
+              {winItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearWinsToday}
+                  className="text-[11px] text-zinc-500 hover:text-zinc-400"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            {winItems.length === 0 ? (
+              <p className="py-5 text-center text-sm text-zinc-600">
+                No wins logged yet — add one above when something goes right.
+              </p>
+            ) : (
+              <ul className="max-h-52 min-w-0 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
+                {winItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex min-w-0 gap-2 rounded-lg border border-zinc-800/90 bg-zinc-900/50 px-3 py-2.5"
+                  >
+                    <p className="min-w-0 flex-1 text-sm leading-relaxed text-zinc-200">
+                      {item.text}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeWin(item.id)}
+                      className="shrink-0 self-start rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                      aria-label="Remove win"
+                    >
+                      Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </motion.section>

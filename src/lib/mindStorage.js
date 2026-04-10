@@ -5,8 +5,8 @@ const MIND_KEY = 'focus-system-mind-v1'
 export function defaultMindState() {
   return {
     parkingItems: [],
-    winLine: '',
-    winDay: '',
+    winItems: [],
+    winsDay: '',
     tipIndex: 0,
     preflightDate: '',
     preflightWater: false,
@@ -16,6 +16,7 @@ export function defaultMindState() {
 }
 
 const MAX_PARKING_TEXT = 2000
+const MAX_WIN_TEXT = 500
 
 function normalizeParkingItems(raw) {
   if (Array.isArray(raw.parkingItems)) {
@@ -46,18 +47,58 @@ function normalizeParkingItems(raw) {
   return []
 }
 
+function normalizeWinItems(rawItems) {
+  if (!Array.isArray(rawItems)) return []
+  return rawItems
+    .filter(
+      (x) =>
+        x &&
+        typeof x === 'object' &&
+        typeof x.text === 'string' &&
+        x.text.trim(),
+    )
+    .map((x) => ({
+      id:
+        typeof x.id === 'string' && x.id
+          ? x.id
+          : `w-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      text: x.text.trim().slice(0, MAX_WIN_TEXT),
+    }))
+}
+
+function normalizeWinsForToday(raw, t) {
+  if (raw.winsDay === t && Array.isArray(raw.winItems)) {
+    return {
+      winItems: normalizeWinItems(raw.winItems),
+      winsDay: t,
+    }
+  }
+  if (raw.winDay === t && typeof raw.winLine === 'string' && raw.winLine.trim()) {
+    return {
+      winItems: [
+        {
+          id: `migrated-win-${Date.now()}`,
+          text: raw.winLine.trim().slice(0, MAX_WIN_TEXT),
+        },
+      ],
+      winsDay: t,
+    }
+  }
+  return { winItems: [], winsDay: '' }
+}
+
 function normalize(raw) {
   const t = todayKey()
   const base = defaultMindState()
   if (!raw || typeof raw !== 'object') return base
 
-  const sameWinDay = raw.winDay === t
   const samePreflight = raw.preflightDate === t
+  const wins = normalizeWinsForToday(raw, t)
 
   return {
     parkingItems: normalizeParkingItems(raw),
-    winLine: sameWinDay && typeof raw.winLine === 'string' ? raw.winLine : '',
-    winDay: sameWinDay ? t : '',
+    winItems: wins.winItems,
+    winsDay: wins.winsDay,
     tipIndex: Number.isFinite(Number(raw.tipIndex))
       ? Math.max(0, Math.floor(Number(raw.tipIndex)))
       : 0,
